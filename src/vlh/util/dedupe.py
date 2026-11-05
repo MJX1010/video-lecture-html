@@ -12,7 +12,7 @@ def find_duplicate_videos(
     by_size: dict[int, Path] = {}
     unique: list[Path] = []
     skipped: list[tuple[Path, Path]] = []
-    for p in sorted(paths, key=lambda x: x.name):
+    for p in sorted(paths, key=lambda x: (not x.name.startswith("【"), x.name)):
         try:
             size = p.stat().st_size
         except OSError:

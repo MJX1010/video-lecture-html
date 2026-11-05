@@ -11,7 +11,7 @@ from rich.console import Console
 from vlh import __version__
 from vlh.htmlgen.models import SiteIndex
 from vlh.htmlgen.site import write_site_index
-from vlh.pipeline import process_video
+from vlh.pipeline import load_existing_talk, process_video
 from vlh.util.dedupe import find_duplicate_videos
 
 app = typer.Typer(
@@ -83,6 +83,7 @@ def batch_cmd(
     sample_interval: float = typer.Option(2.0, "--sample-interval"),
     site_title: str = typer.Option("UWA Learning", "--site-title"),
     limit: int = typer.Option(0, "--limit", help="只处理前 N 个（0=全部）"),
+    resume: bool = typer.Option(True, "--resume/--no-resume", help="跳过已有转写输出的讲次（断点续跑）"),
 ) -> None:
     """批处理目录内视频；按【分类】文件名分组索引。"""
     videos = sorted(
@@ -102,8 +103,28 @@ def batch_cmd(
         videos = videos[:limit]
 
     talks = []
+    failed: list[tuple[str, str]] = []
+    resumed = 0
+    backend = None
+    if not (slides_only or dry_run):
+        from vlh.asr.base import get_backend
+
+        backend = get_backend(prefer=asr, allow_missing=True)
+        console.print(f"[bold]ASR backend[/bold] {getattr(backend, 'name', '?')} "
+                      f"{getattr(backend, 'device', '')} {getattr(backend, 'reason', '')}")
+    import time
+
+    t_all = time.time()
     for i, v in enumerate(videos, 1):
         console.rule(f"[{i}/{len(videos)}] {v.name}")
+        if resume and not (slides_only or dry_run):
+            existing = load_existing_talk(v, out)
+            if existing is not None:
+                console.print(f"[dim]resume: already done[/dim] {existing.slug}")
+                talks.append(existing)
+                resumed += 1
+                continue
+        t0 = time.time()
         try:
             talk = process_video(
                 v,
@@ -115,16 +136,25 @@ def batch_cmd(
                 slides_only=slides_only,
                 dry_run=dry_run,
                 sample_interval=sample_interval,
+                backend=backend,
             )
             talks.append(talk)
+            console.print(f"[green]ok[/green] {v.name} in {time.time() - t0:.0f}s")
         except Exception as e:  # noqa: BLE001
+            failed.append((v.name, str(e)))
             console.print(f"[red]failed[/red] {v.name}: {e}")
+        # refresh index after each talk so partial results are browsable
+        write_site_index(SiteIndex(title=site_title, talks=talks, out_dir=out))
 
     write_site_index(SiteIndex(title=site_title, talks=talks, out_dir=out))
-    console.print(f"[bold green]done[/bold green] {len(talks)} talks → {out / 'index.html'}")
+    console.print(
+        f"[bold green]done[/bold green] {len(talks)} talks ({resumed} resumed), "
+        f"{len(failed)} failed, {time.time() - t_all:.0f}s -> {out / 'index.html'}"
+    )
+    for name, err in failed:
+        console.print(f"[red]FAILED[/red] {name}: {err}")
     if skipped_pairs:
         console.print(f"[dim]skipped {len(skipped_pairs)} same-size duplicates[/dim]")
-
 
 if __name__ == "__main__":
     app()

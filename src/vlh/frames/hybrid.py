@@ -136,22 +136,6 @@ def extract_hybrid_slides(
 
     candidates = _sample_times_via_ffmpeg(video, sample_interval, raw_dir)
 
-    # Optional I-frame pass (best-effort)
-    try:
-        from vlh.util.ffmpeg import extract_keyframes_ffmpeg
-
-        kf_dir = out_dir / "_raw_keyframes"
-        if kf_dir.exists():
-            shutil.rmtree(kf_dir)
-        kfs = extract_keyframes_ffmpeg(video, kf_dir)
-        fps = _probe_fps(video)
-        # Approximate times from sequential I-frames is imperfect; keep as extras
-        # tagged with unknown time ≈ index/fps * gop guess — skip timing, use for
-        # visual dedupe only if we already have timed samples.
-        _ = (kfs, fps)
-    except Exception:  # noqa: BLE001
-        pass
-
     kept: list[Slide] = []
     prev_img = None
     last_t = -1e9

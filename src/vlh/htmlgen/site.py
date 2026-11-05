@@ -55,6 +55,9 @@ def write_talk_page(talk: TalkPage, site_root: Path) -> Path:
         "speaker": talk.speaker,
         "duration_sec": talk.duration_sec,
         "asr_backend": talk.asr_backend,
+        "asr_note": talk.asr_note,
+        "source_name": talk.source_name,
+        "video_href": talk.video_href,
         "segments": [{"start": s.start, "end": s.end, "text": s.text} for s in talk.segments],
         "slides": [
             {"index": s.index, "time_sec": s.time_sec, "image": s.image_rel, "ocr": s.ocr_text}

@@ -30,12 +30,22 @@ def parse_uwa_title(filename: str) -> ParsedTitle:
     m = _UWA_RE.match(stem.strip())
     if not m:
         return ParsedTitle(category=None, title=stem.strip(), speaker=None, raw=stem)
-    return ParsedTitle(
-        category=m.group("cat").strip(),
-        title=m.group("title").strip(),
-        speaker=(m.group("speaker") or "").strip() or None,
-        raw=stem,
-    )
+    title = m.group("title").strip()
+    speaker = (m.group("speaker") or "").strip() or None
+    # " - xxx" is usually a subtitle in UWA names; only treat short tails as speaker names
+    if speaker and (len(speaker) > 6 or " " in speaker):
+        title = f"{title} - {speaker}"
+        speaker = None
+    return ParsedTitle(category=m.group("cat").strip(), title=title, speaker=speaker, raw=stem)
+
+
+def talk_slug(filename: str) -> str:
+    """Stable, collision-safe slug: readable prefix + short hash of the full filename."""
+    import hashlib
+
+    p = parse_uwa_title(filename)
+    h = hashlib.sha1(filename.encode("utf-8")).hexdigest()[:8]
+    return f"{slugify(f'{p.category or 'talk'}-{p.title}', max_len=60)}-{h}"
 
 
 def slugify(text: str, max_len: int = 80) -> str:

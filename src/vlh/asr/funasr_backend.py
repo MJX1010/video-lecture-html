@@ -1,4 +1,4 @@
-"""FunASR backend (Paraformer-zh / SenseVoice) with word/sentence timestamps."""
+"""FunASR backend (Paraformer-zh / SenseVoice) with sentence timestamps."""
 
 from __future__ import annotations
 
@@ -7,54 +7,54 @@ from pathlib import Path
 from .base import Segment, TranscribeResult
 
 
+def _pick_device() -> str:
+    try:
+        import torch  # type: ignore
+
+        if torch.cuda.is_available():
+            return "cuda:0"
+    except Exception:  # noqa: BLE001
+        pass
+    return "cpu"
+
+
 class FunAsrBackend:
     name = "funasr"
 
-    def __init__(self, model: str = "paraformer-zh"):
+    def __init__(self, model: str = "paraformer-zh", device: str | None = None):
         # Import lazily so `vlh --help` works without FunASR installed.
         from funasr import AutoModel  # type: ignore
 
         self._model_id = model
-        # paraformer-zh ships sentence timestamps via vad + punc pipeline
+        self.device = device or _pick_device()
+        kw = dict(vad_model="fsmn-vad", punc_model="ct-punc", device=self.device, disable_update=True)
         if model == "sensevoice":
-            self._model = AutoModel(model="iic/SenseVoiceSmall", vad_model="fsmn-vad", punc_model="ct-punc")
+            self._model = AutoModel(model="iic/SenseVoiceSmall", **kw)
         else:
-            self._model = AutoModel(
-                model="paraformer-zh",
-                vad_model="fsmn-vad",
-                punc_model="ct-punc",
-                spk_model=None,
-            )
+            self._model = AutoModel(model="paraformer-zh", **kw)
 
     def transcribe(self, audio_or_video: Path, language: str = "zh") -> TranscribeResult:
-        res = self._model.generate(input=str(audio_or_video), batch_size_s=300)
+        res = self._model.generate(input=str(audio_or_video), batch_size_s=300, sentence_timestamp=True)
         segments: list[Segment] = []
-        # FunASR return shapes vary by model; normalize common cases.
         items = res if isinstance(res, list) else [res]
         for item in items:
             if not isinstance(item, dict):
                 continue
             text = (item.get("text") or "").strip()
-            # sentence_info preferred when present
-            sent_info = item.get("sentence_info") or item.get("sentences") or []
+            sent_info = item.get("sentence_info") or []
             if sent_info:
+                # FunASR sentence_info timestamps are always milliseconds
                 for s in sent_info:
-                    st = float(s.get("start", s.get("start_time", 0)) or 0)
-                    en = float(s.get("end", s.get("end_time", st)) or st)
-                    # FunASR often uses ms
-                    if st > 1000 or en > 1000:
-                        st, en = st / 1000.0, en / 1000.0
-                    tx = (s.get("text") or "").strip()
+                    st = float(s.get("start", 0) or 0) / 1000.0
+                    en = float(s.get("end", 0) or 0) / 1000.0
+                    tx = (s.get("text") or s.get("sentence") or "").strip()
                     if tx:
                         segments.append(Segment(start=st, end=en, text=tx))
             elif text:
                 ts = item.get("timestamp") or []
                 if ts and isinstance(ts[0], (list, tuple)):
-                    st = float(ts[0][0])
-                    en = float(ts[-1][1])
-                    if st > 1000 or en > 1000:
-                        st, en = st / 1000.0, en / 1000.0
-                    segments.append(Segment(start=st, end=en, text=text))
+                    segments.append(Segment(start=ts[0][0] / 1000.0, end=ts[-1][1] / 1000.0, text=text))
                 else:
                     segments.append(Segment(start=0.0, end=0.0, text=text))
-        return TranscribeResult(language=language, segments=segments, backend=self.name)
+        note = f"FunASR paraformer-zh + fsmn-vad + ct-punc on {self.device}"
+        return TranscribeResult(language=language, segments=segments, backend=self.name, note=note)
