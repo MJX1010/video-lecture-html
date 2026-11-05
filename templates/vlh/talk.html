@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ talk.title }} · vlh</title>
+  <link rel="stylesheet" href="{{ root_href }}assets/styles.css" />
+</head>
+<body>
+  <header class="app">
+    <a href="{{ root_href }}index.html">← 目录</a>
+    <h1>{{ talk.title }}</h1>
+    <input class="search" id="q" type="search" placeholder="页内搜索转写…" />
+  </header>
+  <main>
+    <p class="meta">
+      {% if talk.category %}【{{ talk.category }}】 {% endif %}
+      {% if talk.speaker %}{{ talk.speaker }} · {% endif %}
+      源文件 {{ talk.source_name }}
+      {% if talk.duration_sec %} · {{ '%.1f'|format(talk.duration_sec) }}s{% endif %}
+      · ASR {{ talk.asr_backend }}
+    </p>
+    {% if talk.asr_note %}
+    <div class="note">{{ talk.asr_note }}</div>
+    {% endif %}
+
+    {% if talk.video_href %}
+    <video id="player" controls preload="metadata" src="{{ talk.video_href }}"></video>
+    {% endif %}
+
+    <div class="layout">
+      <section class="panel">
+        <h2>幻灯片 / 关键帧（{{ talk.slides|length }}）</h2>
+        <div class="slides">
+          {% for s in talk.slides %}
+          <div class="slide" id="slide-{{ s.index }}">
+            <img src="{{ s.image_rel }}" alt="slide {{ s.index }}" loading="lazy" />
+            <div class="cap">
+              #{{ s.index }} · {{ '%.1f'|format(s.time_sec) }}s
+              {% if talk.video_href %}
+              · <a href="#" data-t="{{ s.time_sec }}" class="jump">跳转</a>
+              {% endif %}
+              {% if s.ocr_text %}<div>{{ s.ocr_text }}</div>{% endif %}
+            </div>
+          </div>
+          {% else %}
+          <p class="meta">无幻灯片（dry-run 或抽帧未产生结果）</p>
+          {% endfor %}
+        </div>
+      </section>
+      <section class="panel">
+        <h2>转写时间轴（{{ talk.segments|length }}）</h2>
+        <div class="segments" id="segs">
+          {% for s in talk.segments %}
+          <div class="seg" data-text="{{ s.text }}">
+            <time>
+              {% if talk.video_href %}
+              <a href="#" class="jump" data-t="{{ s.start }}">{{ '%02d:%02d'|format((s.start//60)|int, (s.start%60)|int) }}</a>
+              {% else %}
+              {{ '%02d:%02d'|format((s.start//60)|int, (s.start%60)|int) }}
+              {% endif %}
+            </time>
+            <div>{{ s.text }}</div>
+          </div>
+          {% else %}
+          <p class="meta">暂无转写。安装 FunASR / faster-whisper 后去掉 --slides-only 再跑。</p>
+          {% endfor %}
+        </div>
+      </section>
+    </div>
+  </main>
+  <footer>hybrid 关键帧去重 · 中文 ASR 结构化 · video-lecture-html</footer>
+  <script>
+    const player = document.getElementById('player');
+    document.querySelectorAll('.jump').forEach(a => {
+      a.addEventListener('click', e => {
+        e.preventDefault();
+        const t = parseFloat(a.dataset.t || '0');
+        if (player) { player.currentTime = t; player.play(); }
+      });
+    });
+    const q = document.getElementById('q');
+    q.addEventListener('input', () => {
+      const needle = q.value.trim().toLowerCase();
+      document.querySelectorAll('.seg').forEach(seg => {
+        const hit = !needle || (seg.dataset.text || '').toLowerCase().includes(needle);
+        seg.style.display = hit ? '' : 'none';
+        seg.classList.toggle('hit', !!(needle && hit));
+      });
+    });
+  </script>
+</body>
+</html>

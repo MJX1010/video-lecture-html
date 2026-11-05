@@ -1,0 +1,21 @@
+video-lecture-html
+Copyright (c) 2026 MJX1010
+
+This project is licensed under the MIT License (see LICENSE).
+
+Third-party acknowledgements (not bundled; install separately):
+
+- FunASR / Paraformer / SenseVoice — Apache-2.0 — https://github.com/modelscope/FunASR
+- faster-whisper — MIT — https://github.com/SYSTRAN/faster-whisper
+- PaddleOCR — Apache-2.0 — https://github.com/PaddlePaddle/PaddleOCR
+- OpenCV — Apache-2.0 — https://opencv.org/
+- FFmpeg — LGPL/GPL (system dependency) — https://ffmpeg.org/
+- Jinja2 — BSD-3-Clause — https://jinja.palletsprojects.com/
+- Typer / Rich — MIT — https://github.com/fastapi/typer
+
+Related prior art / inspiration (not a dependency):
+- lecture-to-notes and similar open lecture-note pipelines on GitHub
+
+Model weights are NOT included in this repository. Users download them via
+FunASR / ModelScope / Hugging Face at first run according to those projects'
+own licenses and terms.

@@ -1,0 +1,39 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.env
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.log
+.DS_Store
+Thumbs.db
+
+# Local models / caches (never commit weights)
+models/
+.cache/
+~/.cache/
+huggingface/
+modelscope/
+
+# Generated outputs / sample media
+out/
+output/
+_out/
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.wav
+*.mp3
+!tests/fixtures/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
