@@ -235,3 +235,26 @@ footer { color: var(--muted); text-align: center; padding: 2rem 1rem; font-size:
   margin-bottom: .5rem;
 }
 .raw-block[open] > summary { margin-bottom: .85rem; }
+
+.chip-ai { color: #f0c674; border-color: rgba(240,198,116,.4); }
+.summary-card .one-liner {
+  font-size: 1.15rem; font-weight: 600; margin: 0; color: #f3f6fb;
+  max-width: var(--measure); line-height: 1.55;
+}
+.glossary { margin: 0; max-width: var(--measure); }
+.gloss-item {
+  display: grid; grid-template-columns: minmax(6rem, 10rem) 1fr; gap: .6rem;
+  padding: .4rem 0; border-bottom: 1px dashed var(--border);
+}
+.glossary dt { font-weight: 600; color: var(--accent2); }
+.glossary dd { margin: 0; color: #d7dee8; }
+.chapter-points {
+  max-width: var(--measure); margin: .4rem 0 0; padding-left: 1.1rem; color: #c9d4e3;
+}
+.chapter-points li { margin: .25rem 0; }
+.subh { font-size: 1rem; margin: 1rem 0 .4rem; color: var(--accent2); }
+.muted-list { color: var(--muted); }
+.card-blurb {
+  margin: .45rem 0 0;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}

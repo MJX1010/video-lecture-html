@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="{{ root_href }}assets/styles.css" />
 </head>
 <body class="talk-page">
+  {% set ai = talk.ai_analysis %}
+  {% set rule = talk.analysis %}
   <header class="app">
     <a class="back" href="{{ root_href }}index.html">← 目录</a>
     <h1>{{ talk.title }}</h1>
@@ -18,17 +20,18 @@
       <div class="toc-title">大纲</div>
       <nav class="toc-nav">
         <a href="#overview">内容概览</a>
-        {% if talk.analysis and talk.analysis.key_points %}
-        <a href="#keypoints">要点</a>
+        {% if ai and ai.key_points %}<a href="#keypoints">核心要点</a>{% elif rule and rule.key_points %}<a href="#keypoints">要点</a>{% endif %}
+        {% if ai and ai.glossary %}<a href="#glossary">术语表</a>{% endif %}
+        {% if ai %}
+          {% for c in ai.chapters %}
+          <a href="#{{ c.anchor }}" title="{{ c.title }}"><span class="toc-i">{{ c.index }}</span><span class="toc-t">{{ c.title }}</span></a>
+          {% endfor %}
+        {% elif rule %}
+          {% for c in rule.chapters %}
+          <a href="#{{ c.anchor }}" title="{{ c.title }}"><span class="toc-i">{{ c.index }}</span><span class="toc-t">{{ c.title }}</span></a>
+          {% endfor %}
         {% endif %}
-        {% if talk.analysis %}
-        {% for c in talk.analysis.chapters %}
-        <a href="#{{ c.anchor }}" title="{{ c.title }}">
-          <span class="toc-i">{{ c.index }}</span>
-          <span class="toc-t">{{ c.title }}</span>
-        </a>
-        {% endfor %}
-        {% endif %}
+        {% if ai and ai.practice_tips %}<a href="#practice">实践建议</a>{% endif %}
         <a href="#raw">原始材料</a>
       </nav>
     </aside>
@@ -41,68 +44,66 @@
         <span class="chip">{{ '%d:%02d'|format((talk.duration_sec//60)|int, (talk.duration_sec%60)|int) }}</span>
         {% endif %}
         <span class="chip">ASR {{ talk.asr_backend }}</span>
-        {% if talk.analysis %}
-        <span class="chip chip-soft">{{ talk.analysis.label }}</span>
+        {% if ai %}
+        <span class="chip chip-ai">{{ ai.label or ('AI 整理（模型：' ~ ai.model ~ '）') }}</span>
+        {% elif rule %}
+        <span class="chip chip-soft">{{ rule.label }}</span>
         {% endif %}
       </p>
-      {% if talk.asr_note %}
-      <div class="note">{{ talk.asr_note }}</div>
+
+      {% if ai and ai.one_liner %}
+      <section class="panel reading summary-card" id="summary">
+        <h2>摘要</h2>
+        <p class="one-liner">{{ ai.one_liner }}</p>
+      </section>
       {% endif %}
 
-      {% if talk.analysis %}
+      {% if ai %}
       <section class="panel reading" id="overview">
         <h2>内容概览</h2>
-        <p class="overview">{{ talk.analysis.overview }}</p>
+        {% for para in ai.overview.split('\n\n') if ai.overview %}
+        <p class="overview">{{ para }}</p>
+        {% else %}
+        <p class="meta">（暂无概览）</p>
+        {% endfor %}
         <ul class="stats">
           <li>时长 <strong>{{ '%d:%02d'|format((talk.duration_sec//60)|int, (talk.duration_sec%60)|int) if talk.duration_sec else '—' }}</strong></li>
-          <li>章节 <strong>{{ talk.analysis.stats.get('chapter_count', talk.analysis.chapters|length) }}</strong></li>
-          <li>转写段 <strong>{{ talk.analysis.stats.get('segment_count', talk.segments|length) }}</strong></li>
-          <li>幻灯片 <strong>{{ talk.analysis.stats.get('slide_count', talk.slides|length) }}</strong></li>
-          <li>正文约 <strong>{{ talk.analysis.stats.get('char_count', talk.full_text|length) }}</strong> 字</li>
+          <li>章节 <strong>{{ ai.chapters|length }}</strong></li>
+          <li>转写段 <strong>{{ talk.segments|length }}</strong></li>
+          <li>幻灯片 <strong>{{ talk.slides|length }}</strong></li>
         </ul>
       </section>
 
-      <section class="panel reading" id="outline">
-        <h2>大纲</h2>
-        <ol class="outline-list">
-          {% for c in talk.analysis.chapters %}
-          <li>
-            <a href="#{{ c.anchor }}">
-              <time>{{ c.start_label }}</time>
-              <span>{{ c.title }}</span>
-            </a>
-          </li>
-          {% endfor %}
-        </ol>
-      </section>
-
-      {% if talk.analysis.key_points %}
+      {% if ai.key_points %}
       <section class="panel reading" id="keypoints">
-        <h2>要点</h2>
-        <ul class="keypoints">
-          {% for kp in talk.analysis.key_points %}
-          <li>{{ kp }}</li>
+        <h2>核心要点</h2>
+        <ul class="keypoints">{% for kp in ai.key_points %}<li>{{ kp }}</li>{% endfor %}</ul>
+      </section>
+      {% endif %}
+
+      {% if ai.glossary %}
+      <section class="panel reading" id="glossary">
+        <h2>术语表</h2>
+        <dl class="glossary">
+          {% for g in ai.glossary %}
+          <div class="gloss-item"><dt>{{ g.term }}</dt><dd>{{ g.definition }}</dd></div>
           {% endfor %}
-        </ul>
+        </dl>
       </section>
       {% endif %}
 
       <section class="panel reading" id="chapters">
         <h2>分章精读</h2>
-        {% for c in talk.analysis.chapters %}
-        <article class="chapter" id="{{ c.anchor }}" data-text="{{ c.paragraphs|join(' ') }}">
+        {% for c in ai.chapters %}
+        <article class="chapter" id="{{ c.anchor }}" data-text="{{ c.rewrite }} {{ c.key_points|join(' ') }}">
           <header class="chapter-h">
-            <h3>
-              <span class="ch-num">{{ c.index }}</span>
-              {{ c.title }}
-            </h3>
+            <h3><span class="ch-num">{{ c.index }}</span> {{ c.title }}</h3>
             <div class="chapter-meta">
               {% if talk.video_href %}
-              <a href="#" class="jump" data-t="{{ c.start }}">跳到 {{ c.start_label }}</a>
+              <a href="#" class="jump" data-t="{{ c.start }}">跳到视频 {{ c.start_label }}</a>
               {% else %}
               <span>{{ c.start_label }}</span>
               {% endif %}
-              · {{ c.paragraphs|length }} 段
             </div>
           </header>
           {% if c.slide_image %}
@@ -114,20 +115,62 @@
             {% for p in c.paragraphs %}
             <p>{{ p }}</p>
             {% else %}
-            <p class="meta">（本章暂无可用转写）</p>
+            <p class="meta">（本章暂无精读正文）</p>
             {% endfor %}
           </div>
+          {% if c.key_points %}
+          <ul class="chapter-points">{% for kp in c.key_points %}<li>{{ kp }}</li>{% endfor %}</ul>
+          {% endif %}
+        </article>
+        {% endfor %}
+      </section>
+
+      {% if ai.practice_tips %}
+      <section class="panel reading" id="practice">
+        <h2>实践建议</h2>
+        <ul class="keypoints">{% for tip in ai.practice_tips %}<li>{{ tip }}</li>{% endfor %}</ul>
+        {% if ai.limitations %}
+        <h3 class="subh">局限与开放问题</h3>
+        <ul class="keypoints muted-list">{% for x in ai.limitations %}<li>{{ x }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if ai.further_keywords %}
+        <p class="meta">延伸关键词：{{ ai.further_keywords|join(' · ') }}</p>
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% elif rule %}
+      <section class="panel reading" id="overview">
+        <h2>内容概览</h2>
+        <p class="overview">{{ rule.overview }}</p>
+        <p class="note">当前为规则引擎自动整理；可运行 <code>vlh ai-enrich</code> 生成 AI 精读。</p>
+      </section>
+      {% if rule.key_points %}
+      <section class="panel reading" id="keypoints">
+        <h2>要点</h2>
+        <ul class="keypoints">{% for kp in rule.key_points %}<li>{{ kp }}</li>{% endfor %}</ul>
+      </section>
+      {% endif %}
+      <section class="panel reading" id="chapters">
+        <h2>分章精读</h2>
+        {% for c in rule.chapters %}
+        <article class="chapter" id="{{ c.anchor }}" data-text="{{ c.paragraphs|join(' ') }}">
+          <header class="chapter-h">
+            <h3><span class="ch-num">{{ c.index }}</span> {{ c.title }}</h3>
+            <div class="chapter-meta">
+              {% if talk.video_href %}<a href="#" class="jump" data-t="{{ c.start }}">跳到视频 {{ c.start_label }}</a>{% else %}<span>{{ c.start_label }}</span>{% endif %}
+            </div>
+          </header>
+          {% if c.slide_image %}<figure class="chapter-slide"><img src="{{ c.slide_image }}" alt="" loading="lazy" /></figure>{% endif %}
+          <div class="chapter-body">{% for p in c.paragraphs %}<p>{{ p }}</p>{% endfor %}</div>
         </article>
         {% endfor %}
       </section>
       {% else %}
-      <section class="panel reading">
-        <h2>内容概览</h2>
-        <p class="meta">尚未生成内容分析。请运行 <code>vlh enrich</code>。</p>
-      </section>
+      <section class="panel reading"><h2>内容概览</h2><p class="meta">尚未生成分析。请运行 <code>vlh enrich</code> 或 <code>vlh ai-enrich</code>。</p></section>
       {% endif %}
 
-      <details class="raw-block" id="raw" open>
+      <details class="raw-block" id="raw">
         <summary>原始材料（视频 · 幻灯片 · 转写时间轴）</summary>
         {% if talk.video_href %}
         <video id="player" controls preload="metadata" src="{{ talk.video_href }}"></video>
@@ -139,17 +182,9 @@
               {% for s in talk.slides %}
               <div class="slide" id="slide-{{ s.index }}">
                 <img src="{{ s.image_rel }}" alt="slide {{ s.index }}" loading="lazy" />
-                <div class="cap">
-                  #{{ s.index }} · {{ '%.1f'|format(s.time_sec) }}s
-                  {% if talk.video_href %}
-                  · <a href="#" data-t="{{ s.time_sec }}" class="jump">跳转</a>
-                  {% endif %}
-                  {% if s.ocr_text %}<div>{{ s.ocr_text }}</div>{% endif %}
-                </div>
+                <div class="cap">#{{ s.index }} · {{ '%.1f'|format(s.time_sec) }}s{% if talk.video_href %} · <a href="#" data-t="{{ s.time_sec }}" class="jump">跳转</a>{% endif %}{% if s.ocr_text %}<div>{{ s.ocr_text }}</div>{% endif %}</div>
               </div>
-              {% else %}
-              <p class="meta">无幻灯片</p>
-              {% endfor %}
+              {% else %}<p class="meta">无幻灯片</p>{% endfor %}
             </div>
           </section>
           <section class="panel">
@@ -157,18 +192,10 @@
             <div class="segments" id="segs">
               {% for s in talk.segments %}
               <div class="seg" data-text="{{ s.text }}">
-                <time>
-                  {% if talk.video_href %}
-                  <a href="#" class="jump" data-t="{{ s.start }}">{{ '%02d:%02d'|format((s.start//60)|int, (s.start%60)|int) }}</a>
-                  {% else %}
-                  {{ '%02d:%02d'|format((s.start//60)|int, (s.start%60)|int) }}
-                  {% endif %}
-                </time>
+                <time>{% if talk.video_href %}<a href="#" class="jump" data-t="{{ s.start }}">{{ '%02d:%02d'|format((s.start//60)|int, (s.start%60)|int) }}</a>{% else %}{{ '%02d:%02d'|format((s.start//60)|int, (s.start%60)|int) }}{% endif %}</time>
                 <div>{{ s.text }}</div>
               </div>
-              {% else %}
-              <p class="meta">暂无转写</p>
-              {% endfor %}
+              {% else %}<p class="meta">暂无转写</p>{% endfor %}
             </div>
           </section>
         </div>
@@ -176,16 +203,16 @@
     </main>
   </div>
 
-  <footer>hybrid 关键帧 · 规则引擎内容整理 · video-lecture-html</footer>
+  <footer>AI Agent 精读整理 · hybrid 关键帧 · video-lecture-html</footer>
   <script>
     const player = document.getElementById('player');
     document.querySelectorAll('.jump').forEach(a => {
       a.addEventListener('click', e => {
         e.preventDefault();
         const t = parseFloat(a.dataset.t || '0');
-        if (player) { player.currentTime = t; player.play(); }
         const raw = document.getElementById('raw');
         if (raw && !raw.open) raw.open = true;
+        if (player) { player.currentTime = t; player.play(); }
       });
     });
     const q = document.getElementById('q');

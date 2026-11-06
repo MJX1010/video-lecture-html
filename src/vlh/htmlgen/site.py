@@ -6,11 +6,19 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from .models import AnalysisView, ChapterView, SegmentView, SiteIndex, SlideView, TalkPage
+from .models import (
+    AIAnalysisView,
+    AIChapterView,
+    AnalysisView,
+    ChapterView,
+    SegmentView,
+    SiteIndex,
+    SlideView,
+    TalkPage,
+)
 
 
 def _templates_dir() -> Path:
-    """Resolve templates: packaged copy first, then repo templates/vlh."""
     packaged = Path(__file__).resolve().parent.parent / "templates"
     if (packaged / "talk.html").exists():
         return packaged
@@ -41,6 +49,42 @@ def copy_static(out_dir: Path) -> None:
         shutil.copy2(src, dest_dir / "styles.css")
 
 
+def _ai_to_meta(ai: AIAnalysisView) -> dict:
+    return {
+        "one_liner": ai.one_liner,
+        "overview": ai.overview,
+        "key_points": ai.key_points,
+        "glossary": ai.glossary,
+        "practice_tips": ai.practice_tips,
+        "limitations": ai.limitations,
+        "further_keywords": ai.further_keywords,
+        "chapters": [
+            {
+                "index": c.index,
+                "title": c.title,
+                "start": c.start,
+                "end": c.end,
+                "slide_index": c.slide_index,
+                "slide_image": c.slide_image,
+                "rewrite": c.rewrite,
+                "paragraphs": c.paragraphs,
+                "key_points": c.key_points,
+                "terms": c.terms,
+                "uncertain": c.uncertain,
+            }
+            for c in ai.chapters
+        ],
+        "model": ai.model,
+        "provider": ai.provider,
+        "prompt_version": ai.prompt_version,
+        "method": ai.method,
+        "label": ai.label,
+        "status": ai.status,
+        "error": ai.error,
+        "stats": ai.stats,
+    }
+
+
 def talk_to_meta(talk: TalkPage) -> dict:
     meta = {
         "slug": talk.slug,
@@ -52,7 +96,8 @@ def talk_to_meta(talk: TalkPage) -> dict:
         "asr_note": talk.asr_note,
         "source_name": talk.source_name,
         "video_href": talk.video_href,
-        "full_text": talk.full_text or (talk.analysis.full_text if talk.analysis else ""),
+        "full_text": talk.full_text
+        or (talk.analysis.full_text if talk.analysis else ""),
         "segments": [{"start": s.start, "end": s.end, "text": s.text} for s in talk.segments],
         "slides": [
             {"index": s.index, "time_sec": s.time_sec, "image": s.image_rel, "ocr": s.ocr_text}
@@ -80,6 +125,8 @@ def talk_to_meta(talk: TalkPage) -> dict:
                 for c in talk.analysis.chapters
             ],
         }
+    if talk.ai_analysis:
+        meta["ai_analysis"] = _ai_to_meta(talk.ai_analysis)
     return meta
 
 
@@ -92,7 +139,7 @@ def write_talk_page(talk: TalkPage, site_root: Path) -> Path:
     out.write_text(html, encoding="utf-8")
     meta = talk_to_meta(talk)
     (talk_dir / "meta.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-    if talk.analysis:
+    if talk.analysis and not talk.ai_analysis:
         analysis_payload = {
             "overview": talk.analysis.overview,
             "key_points": talk.analysis.key_points,
@@ -117,6 +164,11 @@ def write_talk_page(talk: TalkPage, site_root: Path) -> Path:
         (talk_dir / "analysis.json").write_text(
             json.dumps(analysis_payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+    if talk.ai_analysis:
+        (talk_dir / "ai_result.json").write_text(
+            json.dumps(_ai_to_meta(talk.ai_analysis), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
     return out
 
 
@@ -138,8 +190,43 @@ def write_site_index(index: SiteIndex) -> Path:
     return out
 
 
+def _parse_ai(raw: dict) -> AIAnalysisView:
+    chapters = [
+        AIChapterView(
+            index=int(c.get("index") or i + 1),
+            title=str(c.get("title") or f"第 {i+1} 章"),
+            start=float(c.get("start") or 0),
+            end=float(c.get("end") or 0),
+            slide_index=c.get("slide_index"),
+            slide_image=c.get("slide_image"),
+            rewrite=str(c.get("rewrite") or "\n\n".join(c.get("paragraphs") or [])),
+            key_points=list(c.get("key_points") or []),
+            terms=list(c.get("terms") or []),
+            uncertain=list(c.get("uncertain") or []),
+        )
+        for i, c in enumerate(raw.get("chapters") or [])
+    ]
+    return AIAnalysisView(
+        one_liner=str(raw.get("one_liner") or ""),
+        overview=str(raw.get("overview") or ""),
+        key_points=list(raw.get("key_points") or []),
+        glossary=list(raw.get("glossary") or []),
+        practice_tips=list(raw.get("practice_tips") or []),
+        limitations=list(raw.get("limitations") or []),
+        further_keywords=list(raw.get("further_keywords") or []),
+        chapters=chapters,
+        model=str(raw.get("model") or ""),
+        provider=str(raw.get("provider") or ""),
+        prompt_version=str(raw.get("prompt_version") or ""),
+        method=str(raw.get("method") or "ai-agent"),
+        label=str(raw.get("label") or "AI 整理"),
+        status=str(raw.get("status") or "ok"),
+        error=str(raw.get("error") or ""),
+        stats=dict(raw.get("stats") or {}),
+    )
+
+
 def talk_from_meta(meta: dict, slug: str | None = None) -> TalkPage:
-    """Rebuild TalkPage from an existing meta.json (no ASR)."""
     slides = [
         SlideView(
             index=int(s.get("index") or i),
@@ -182,6 +269,10 @@ def talk_from_meta(meta: dict, slug: str | None = None) -> TalkPage:
             method=str(raw_a.get("method") or "rule-based"),
             label=str(raw_a.get("label") or "自动整理"),
         )
+    ai_analysis = None
+    raw_ai = meta.get("ai_analysis")
+    if isinstance(raw_ai, dict) and (raw_ai.get("chapters") is not None or raw_ai.get("one_liner")):
+        ai_analysis = _parse_ai(raw_ai)
     return TalkPage(
         slug=slug or str(meta.get("slug") or "talk"),
         title=str(meta.get("title") or slug or "talk"),
@@ -196,4 +287,5 @@ def talk_from_meta(meta: dict, slug: str | None = None) -> TalkPage:
         asr_note=str(meta.get("asr_note") or ""),
         full_text=str(meta.get("full_text") or ""),
         analysis=analysis,
+        ai_analysis=ai_analysis,
     )

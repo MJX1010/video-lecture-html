@@ -138,3 +138,22 @@ out/
 ## License
 
 MIT — 见 `LICENSE`。
+
+
+### AI Agent 精读重写（推荐）
+
+在已有 `meta.json` 转写基础上，用 LLM map-reduce 生成可读精读笔记：
+
+```bash
+# 默认自动探测 DeepSeek / Ollama 等（密钥走环境变量，不入库）
+set VLH_LLM_API_KEY=...          # 或 DEEPSEEK_API_KEY
+set VLH_LLM_BASE_URL=https://api.deepseek.com
+set VLH_LLM_MODEL=deepseek-chat
+
+vlh ai-enrich path/to/uwa_html_site --concurrency 4
+# 试点某一讲：
+vlh ai-enrich path/to/uwa_html_site --only 2ce902f5 -j 4
+```
+
+章节结果缓存于 `talks/<slug>/ai_analysis.json`，可随时续跑。失败时默认回退规则分析。
+
