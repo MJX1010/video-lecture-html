@@ -1,4 +1,4 @@
-"""Typer CLI entry: vlh process / vlh batch."""
+"""Typer CLI entry: vlh process / vlh batch / vlh enrich."""
 
 from __future__ import annotations
 
@@ -9,9 +9,10 @@ import typer
 from rich.console import Console
 
 from vlh import __version__
+from vlh.enrich import attach_analysis, enrich_site
 from vlh.htmlgen.models import SiteIndex
 from vlh.htmlgen.site import write_site_index
-from vlh.pipeline import load_existing_talk, process_video
+from vlh.pipeline import process_video
 from vlh.util.dedupe import find_duplicate_videos
 
 app = typer.Typer(
@@ -52,6 +53,7 @@ def process_cmd(
     dry_run: bool = typer.Option(False, "--dry-run", help="不跑 ffmpeg/ASR，只写占位 HTML"),
     sample_interval: float = typer.Option(2.0, "--sample-interval", help="粗召回采样间隔（秒）"),
     site_title: str = typer.Option("Lecture Notes", "--site-title"),
+    no_analysis: bool = typer.Option(False, "--no-analysis", help="跳过内容分析整理"),
 ) -> None:
     """处理单个视频，生成 talks/<slug>/page.html 与站点 index。"""
     talk = process_video(
@@ -65,6 +67,11 @@ def process_cmd(
         dry_run=dry_run,
         sample_interval=sample_interval,
     )
+    if not no_analysis:
+        attach_analysis(talk)
+        from vlh.htmlgen.site import write_talk_page
+
+        write_talk_page(talk, out)
     write_site_index(SiteIndex(title=site_title, talks=[talk], out_dir=out))
     console.print(f"[bold]index[/bold] {out / 'index.html'}")
 
@@ -83,7 +90,7 @@ def batch_cmd(
     sample_interval: float = typer.Option(2.0, "--sample-interval"),
     site_title: str = typer.Option("UWA Learning", "--site-title"),
     limit: int = typer.Option(0, "--limit", help="只处理前 N 个（0=全部）"),
-    resume: bool = typer.Option(True, "--resume/--no-resume", help="跳过已有转写输出的讲次（断点续跑）"),
+    no_analysis: bool = typer.Option(False, "--no-analysis", help="跳过内容分析整理"),
 ) -> None:
     """批处理目录内视频；按【分类】文件名分组索引。"""
     videos = sorted(
@@ -103,28 +110,8 @@ def batch_cmd(
         videos = videos[:limit]
 
     talks = []
-    failed: list[tuple[str, str]] = []
-    resumed = 0
-    backend = None
-    if not (slides_only or dry_run):
-        from vlh.asr.base import get_backend
-
-        backend = get_backend(prefer=asr, allow_missing=True)
-        console.print(f"[bold]ASR backend[/bold] {getattr(backend, 'name', '?')} "
-                      f"{getattr(backend, 'device', '')} {getattr(backend, 'reason', '')}")
-    import time
-
-    t_all = time.time()
     for i, v in enumerate(videos, 1):
         console.rule(f"[{i}/{len(videos)}] {v.name}")
-        if resume and not (slides_only or dry_run):
-            existing = load_existing_talk(v, out)
-            if existing is not None:
-                console.print(f"[dim]resume: already done[/dim] {existing.slug}")
-                talks.append(existing)
-                resumed += 1
-                continue
-        t0 = time.time()
         try:
             talk = process_video(
                 v,
@@ -136,25 +123,43 @@ def batch_cmd(
                 slides_only=slides_only,
                 dry_run=dry_run,
                 sample_interval=sample_interval,
-                backend=backend,
             )
+            if not no_analysis:
+                attach_analysis(talk)
+                from vlh.htmlgen.site import write_talk_page
+
+                write_talk_page(talk, out)
             talks.append(talk)
-            console.print(f"[green]ok[/green] {v.name} in {time.time() - t0:.0f}s")
         except Exception as e:  # noqa: BLE001
-            failed.append((v.name, str(e)))
             console.print(f"[red]failed[/red] {v.name}: {e}")
-        # refresh index after each talk so partial results are browsable
-        write_site_index(SiteIndex(title=site_title, talks=talks, out_dir=out))
 
     write_site_index(SiteIndex(title=site_title, talks=talks, out_dir=out))
-    console.print(
-        f"[bold green]done[/bold green] {len(talks)} talks ({resumed} resumed), "
-        f"{len(failed)} failed, {time.time() - t_all:.0f}s -> {out / 'index.html'}"
-    )
-    for name, err in failed:
-        console.print(f"[red]FAILED[/red] {name}: {err}")
+    console.print(f"[bold green]done[/bold green] {len(talks)} talks → {out / 'index.html'}")
     if skipped_pairs:
         console.print(f"[dim]skipped {len(skipped_pairs)} same-size duplicates[/dim]")
+
+
+def enrich_cmd(
+    site: Path = typer.Argument(..., exists=True, file_okay=False, help="已有站点目录（含 talks/*/meta.json）"),
+    site_title: str = typer.Option("UWA Learning", "--site-title"),
+    force: bool = typer.Option(True, "--force/--no-force", help="强制重算分析（默认开）"),
+    limit: int = typer.Option(0, "--limit", help="只处理前 N 个讲次（0=全部）"),
+) -> None:
+    """从已有 meta.json 重建「完整内容分析」HTML，不重跑 ASR / 抽帧。"""
+    ok, failed, errors = enrich_site(
+        site, site_title=site_title, force=force, limit=limit
+    )
+    if failed:
+        console.print(f"[yellow]failures[/yellow] {failed}")
+        for e in errors[:20]:
+            console.print(f"  - {e}")
+        raise typer.Exit(code=1)
+    console.print(f"[bold]ok[/bold] {ok} talks enriched")
+
+
+app.command("enrich")(enrich_cmd)
+app.command("rebuild-html")(enrich_cmd)
+
 
 if __name__ == "__main__":
     app()

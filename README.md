@@ -17,6 +17,7 @@
 | OCR | 可选 [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)（`--ocr on`，默认 off） |
 | 输出 | Jinja2 静态站：`index.html` + `talks/<slug>/page.html` + `meta.json` |
 | 批处理 | 可跳过同文件大小重复；从 `【UWA 2024】标题` 类文件名解析分类做索引分组 |
+| 内容分析 | 规则引擎：从已有转写+关键帧生成概览/大纲/分章精读/要点；`vlh enrich` 可无重跑 ASR |
 
 **本仓库不包含模型权重**，也不上传你的视频。
 
